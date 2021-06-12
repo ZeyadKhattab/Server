@@ -2,12 +2,9 @@
 #include <vector>
 
 
-const int NUM_CLIENTS = 500;
-
-void startClient() {
+void startClient(const int NUM_CLIENTS) {
 
     std::vector<int> connectedSockets;
-
     for (int i = 0; i < NUM_CLIENTS; i++) {
 
         int socket = createSocket();

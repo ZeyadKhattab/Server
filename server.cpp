@@ -4,7 +4,6 @@
 #include "socket.h"
 #include <fstream>
 
-const int PORT = 4441;
 
 void bindAndListen(int listeningSocket) {
 
@@ -119,10 +118,12 @@ void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSo
     socketSet.insert(listeningSocket);
     std::vector<int> socketsToAdd, socketsToRemove;
     timeval timeout;
-    timeout.tv_sec = 20;
-    timeout.tv_usec = 0;
-    while (1) {
+
+    bool canHandleMoreConnections = true;
+    while (canHandleMoreConnections) {
         fd_set copy = currentSockets;
+        timeout.tv_sec = 20;
+        timeout.tv_usec = 0;
         int selectValue = select(FD_SETSIZE, &copy, nullptr, nullptr, &timeout);
         if (selectValue < 0) {
             cerr << " Select error\n";
@@ -138,6 +139,7 @@ void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSo
                     int clientSocket = acceptConnection(listeningSocket);
                     if (clientSocket == -1) {
                         cerr << "Could not connect";
+                        canHandleMoreConnections = false;
                         break;
                     }
                     FD_SET(clientSocket, &currentSockets);

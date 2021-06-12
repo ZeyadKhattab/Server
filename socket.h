@@ -9,13 +9,13 @@ using std::cout;
 using std::cerr;
 using std::string;
 
-extern const int PORT;
+extern int PORT;
 
 int createSocket();
 
 std::pair<int, fd_set> startServer();
 
-void startClient();
+void startClient(const int numClients);
 
 void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSockets);
 
