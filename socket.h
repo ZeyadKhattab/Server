@@ -17,4 +17,5 @@ std::pair<int, fd_set> startServer();
 
 void startClient();
 
-void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSockets);
+void acceptConnections(int listeningSocket);
+void respondToClients(int threadId);

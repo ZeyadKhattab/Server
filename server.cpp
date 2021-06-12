@@ -1,7 +1,11 @@
 #include <cstring>
-
+#include <thread>
 #include "socket.h"
 
+const int NUM_THREADS = 5;
+
+std::thread threads[NUM_THREADS];
+fd_set socketSets[NUM_THREADS];
 
 void bindAndListen(int listeningSocket) {
 
@@ -35,6 +39,11 @@ std::pair<int, fd_set> startServer() {
     FD_ZERO(&currentSockets);
     FD_SET(listeningSocket, &currentSockets);
 
+    for (int i = 0; i < NUM_THREADS; i++) {
+
+        FD_ZERO(&socketSets[i]);
+        threads[i] = std::thread(respondToClients, i);
+    }
 
     return {listeningSocket, currentSockets};
 
@@ -61,6 +70,22 @@ int acceptConnection(int listeningSocket) {
 
     return clientSocket;
 }
+
+void acceptConnections(int listeningSocket) {
+    int nxtThread = 0;
+    while (1) {
+        int clientSocket = acceptConnection(listeningSocket);
+        if (clientSocket == -1) {
+            cerr << "Could not connect";
+            exit(1);
+//            cleanup(currentSockets);
+        }
+        FD_SET(clientSocket, &socketSets[nxtThread]);
+        nxtThread = (nxtThread + 1) % NUM_THREADS;
+        cout << "Client " << clientSocket << " connected\n ";
+    }
+}
+
 
 string receiveFromClient(int clientSocket) {
     char buf[4096];
@@ -123,9 +148,45 @@ void cleanup(fd_set &currentSockets) {
 
 }
 
-void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSockets) {
+void respondToClients(int threadId) {
+    cout << "Connected Thread id:" << std::this_thread::get_id() << "\n";
     const string html = htmlToString();
 
+    timeval timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+    while (1) {
+        fd_set copy = socketSets[threadId];
+
+        int selectReturn = select(FD_SETSIZE, &copy, nullptr, nullptr, &timeout);
+        if (selectReturn < 0) {
+            cerr << " Select error\n";
+            exit(1);
+        } else if (selectReturn == 0)
+            continue;
+        cout << "After Select Thread id:" << "\n";
+        for (int i = 0; i < FD_SETSIZE; i++)
+            if (FD_ISSET(i, &copy)) {
+
+                string messageFromClient = receiveFromClient(i);
+                if (messageFromClient == "")
+                    FD_CLR(i, &socketSets[threadId]);
+                else {
+                    cout << "Thread id:" << std::this_thread::get_id() << "Message from: " << i << " "
+                         << messageFromClient << "\n";
+                    sendToClient(i, html);
+
+                }
+
+            }
+    }
+}
+
+
+void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set currentSockets) {
+    const string html = htmlToString();
+
+    int nxtThread = 0;
     while (1) {
         fd_set copy = currentSockets;
         if (select(FD_SETSIZE, &copy, nullptr, nullptr, nullptr) < 0) {
@@ -140,7 +201,8 @@ void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSo
                         cerr << "Could not connect";
                         cleanup(currentSockets);
                     }
-                    FD_SET(clientSocket, &currentSockets);
+                    FD_SET(clientSocket, &socketSets[nxtThread]);
+                    nxtThread = (nxtThread + 1) % NUM_THREADS;
                     cout << "Client " << clientSocket << " connected\n ";
                 } else {
                     string messageFromClient = receiveFromClient(i);
