@@ -1,27 +1,10 @@
-#include <iostream>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <arpa/inet.h>
-#include <string.h>
-#include <string>
+#include <cstring>
+
 #include "socket.h"
 
-using namespace std;
-
-
-void startClient();
-
-int createSocket() {
-    int listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (listeningSocket == -1) {
-        cerr << "Can't create a socket! Quitting" << endl;
-        exit(1);
-    }
-    return listeningSocket;
-}
 
 void bindAndListen(int listeningSocket) {
+
     sockaddr_in hint;
     hint.sin_family = AF_INET;
     hint.sin_port = htons(PORT);
@@ -32,14 +15,42 @@ void bindAndListen(int listeningSocket) {
         cerr << "Error in binding\n";
         exit(0);
     }
-    cout << "PORT" << PORT << "\n";
-    cout << SOMAXCONN << "\n";
-    if (listen(listeningSocket, SOMAXCONN) < 0) {
+
+
+    if (listen(listeningSocket, SOMAXCONN) == -1) {
         cerr << "Error in listening\n";
         exit(0);
     }
 
 }
+
+std::pair<int, fd_set> startServer() {
+
+    int listeningSocket = createSocket();
+    bindAndListen(listeningSocket);
+
+    cout << "Server running on port " << PORT << "\n";
+
+    fd_set currentSockets;
+    FD_ZERO(&currentSockets);
+    FD_SET(listeningSocket, &currentSockets);
+
+
+    return {listeningSocket, currentSockets};
+
+}
+
+int createSocket() {
+    int listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (listeningSocket == -1) {
+        cerr << "Can't create a socket! Quitting\n";
+        exit(1);
+    }
+
+    return listeningSocket;
+}
+
 
 int acceptConnection(int listeningSocket) {
     sockaddr_in client;
@@ -56,10 +67,10 @@ string receiveFromClient(int clientSocket) {
     memset(buf, 0, 4096);
 
     int bytesReceived = recv(clientSocket, buf, 4096, 0);
-    if (bytesReceived == -1) {
-        cerr << "Error in recv(). Quitting" << endl;
-        exit(1);
-    }
+//    if (bytesReceived == -1) {
+//        cerr << "Error in recv(). Quitting" << endl;
+//        exit(1);
+//    }
 
     if (bytesReceived == 0) {
         return "";
@@ -102,22 +113,18 @@ string htmlToString() {
     return html;
 }
 
-int main() {
+void cleanup(fd_set &currentSockets) {
+    for (int i = 0; i < FD_SETSIZE; i++)
+        if (FD_ISSET(i, &currentSockets)) {
+            close(i);
+        }
 
+    exit(1);
 
+}
+
+void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSockets) {
     const string html = htmlToString();
-    int listeningSocket = createSocket();
-    cout << "Server running on port" << PORT << "\n";
-
-
-    bindAndListen(listeningSocket);
-
-
-    fd_set currentSockets;
-    FD_ZERO(&currentSockets);
-    FD_SET(listeningSocket, &currentSockets);
-
-    startClient();
 
     while (1) {
         fd_set copy = currentSockets;
@@ -131,7 +138,7 @@ int main() {
                     int clientSocket = acceptConnection(listeningSocket);
                     if (clientSocket == -1) {
                         cerr << "Could not connect";
-                        continue;
+                        cleanup(currentSockets);
                     }
                     FD_SET(clientSocket, &currentSockets);
                     cout << "Client " << clientSocket << " connected\n ";
@@ -147,6 +154,5 @@ int main() {
                 }
             }
     }
-
 
 }
