@@ -1,16 +1,16 @@
 #include <iostream>
-#include <sys/types.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <string.h>
 #include <string>
-#include <fstream>
+#include "socket.h"
 
 using namespace std;
 
-const int PORT = 4568;
+
+void startClient();
 
 int createSocket() {
     int listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -27,11 +27,13 @@ void bindAndListen(int listeningSocket) {
     hint.sin_port = htons(PORT);
     inet_aton("0.0.0.0", &hint.sin_addr);
 
+
     if (bind(listeningSocket, (sockaddr *) &hint, sizeof(hint)) == -1) {
         cerr << "Error in binding\n";
         exit(0);
     }
-
+    cout << "PORT" << PORT << "\n";
+    cout << SOMAXCONN << "\n";
     if (listen(listeningSocket, SOMAXCONN) < 0) {
         cerr << "Error in listening\n";
         exit(0);
@@ -45,6 +47,7 @@ int acceptConnection(int listeningSocket) {
 
 
     int clientSocket = accept(listeningSocket, (sockaddr *) &client, &clientSize);
+
     return clientSocket;
 }
 
@@ -114,6 +117,8 @@ int main() {
     FD_ZERO(&currentSockets);
     FD_SET(listeningSocket, &currentSockets);
 
+    startClient();
+
     while (1) {
         fd_set copy = currentSockets;
         if (select(FD_SETSIZE, &copy, nullptr, nullptr, nullptr) < 0) {
@@ -124,9 +129,12 @@ int main() {
             if (FD_ISSET(i, &copy)) {
                 if (i == listeningSocket) {
                     int clientSocket = acceptConnection(listeningSocket);
+                    if (clientSocket == -1) {
+                        cerr << "Could not connect";
+                        continue;
+                    }
                     FD_SET(clientSocket, &currentSockets);
                     cout << "Client " << clientSocket << " connected\n ";
-//                    sendToClient(clientSocket, html);
                 } else {
                     string messageFromClient = receiveFromClient(i);
                     if (messageFromClient == "")
