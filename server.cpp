@@ -1,7 +1,10 @@
 #include <cstring>
-
+#include <unordered_set>
+#include <vector>
 #include "socket.h"
+#include <fstream>
 
+const int PORT = 4441;
 
 void bindAndListen(int listeningSocket) {
 
@@ -13,13 +16,13 @@ void bindAndListen(int listeningSocket) {
 
     if (bind(listeningSocket, (sockaddr *) &hint, sizeof(hint)) == -1) {
         cerr << "Error in binding\n";
-        exit(0);
+        exit(EXIT_FAILURE);
     }
 
 
     if (listen(listeningSocket, SOMAXCONN) == -1) {
         cerr << "Error in listening\n";
-        exit(0);
+        exit(EXIT_FAILURE);
     }
 
 }
@@ -45,7 +48,7 @@ int createSocket() {
 
     if (listeningSocket == -1) {
         cerr << "Can't create a socket! Quitting\n";
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     return listeningSocket;
@@ -63,16 +66,11 @@ int acceptConnection(int listeningSocket) {
 }
 
 string receiveFromClient(int clientSocket) {
-    char buf[4096];
-    memset(buf, 0, 4096);
-
-    int bytesReceived = recv(clientSocket, buf, 4096, 0);
-//    if (bytesReceived == -1) {
-//        cerr << "Error in recv(). Quitting" << endl;
-//        exit(1);
-//    }
-
-    if (bytesReceived == 0) {
+    const static int N = 4096;
+    char buf[N];
+    memset(buf, 0, N);
+    int bytesReceived = recv(clientSocket, buf, N, 0);
+    if (bytesReceived <= 0) {
         return "";
     }
 
@@ -81,78 +79,93 @@ string receiveFromClient(int clientSocket) {
 
 }
 
-void sendToClient(int clientSocket, string message) {
+void sendToSocket(int clientSocket, string message) {
     send(clientSocket, message.c_str(), message.size() + 1, 0);
 }
 
 string htmlToString() {
 
     string content, html = "";
-//    ifstream htmlFile("index.html");
-//
-//    while (getline(htmlFile, line)) {
-//        cout << line;
-//        content += line + "\n";
-//    }
+    std::ifstream htmlFile("../index.html");
+    if (htmlFile.is_open()) {
+        string line;
+        while (getline(htmlFile, line)) {
+            content += line + "\n";
+        }
+    } else {
+        cerr << "Error in reading file\n";
+        exit(EXIT_FAILURE);
+    }
 
     html += ("HTTP/1.1 " + string("200") + " OK\r\n");
-    html += "Cache-Control: no-cache, private\r\n";
     html += "Content-Type: text/html\r\n";
     html += "\r\n";
-    content = "<!DOCTYPE html>\n"
-              "<html lang=\"en\">\n"
-              "<head>\n"
-              "    <meta charset=\"UTF-8\">\n"
-              "    <title>Sample</title>\n"
-              "</head>\n"
-              "<body>\n"
-              "<h1>Hello World</h1>\n"
-              "</body>\n"
-              "</html>";
     html += content;
     return html;
 }
 
-void cleanup(fd_set &currentSockets) {
-    for (int i = 0; i < FD_SETSIZE; i++)
-        if (FD_ISSET(i, &currentSockets)) {
-            close(i);
-        }
+void cleanup(std::unordered_set<int> socketSet, int listeningSocket) {
 
-    exit(1);
+    for (int socket:socketSet)
+        close(socket);
+    close(listeningSocket);
 
 }
 
+
 void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSockets) {
     const string html = htmlToString();
-
+    std::unordered_set<int> socketSet;
+    socketSet.insert(listeningSocket);
+    std::vector<int> socketsToAdd, socketsToRemove;
+    timeval timeout;
+    timeout.tv_sec = 20;
+    timeout.tv_usec = 0;
     while (1) {
         fd_set copy = currentSockets;
-        if (select(FD_SETSIZE, &copy, nullptr, nullptr, nullptr) < 0) {
+        int selectValue = select(FD_SETSIZE, &copy, nullptr, nullptr, &timeout);
+        if (selectValue < 0) {
             cerr << " Select error\n";
-            exit(1);
+            exit(EXIT_FAILURE);
         }
-        for (int i = 0; i < FD_SETSIZE; i++)
+        if (selectValue == 0) {
+            cout << "Server has been inactive and is now terminating\n";
+            break;
+        }
+        for (int i:socketSet)
             if (FD_ISSET(i, &copy)) {
                 if (i == listeningSocket) {
                     int clientSocket = acceptConnection(listeningSocket);
                     if (clientSocket == -1) {
                         cerr << "Could not connect";
-                        cleanup(currentSockets);
+                        break;
                     }
                     FD_SET(clientSocket, &currentSockets);
-                    cout << "Client " << clientSocket << " connected\n ";
+                    socketsToAdd.push_back(clientSocket);
+                    cout << "Client " << clientSocket << " connected\n";
                 } else {
                     string messageFromClient = receiveFromClient(i);
-                    if (messageFromClient == "")
+                    if (messageFromClient == "") {
                         FD_CLR(i, &currentSockets);
-                    else {
+                        socketsToRemove.push_back(i);
+                    } else {
                         cout << "Message from: " << i << " " << messageFromClient << "\n";
-                        sendToClient(i, html);
+                        sendToSocket(i, html);
 
                     }
                 }
             }
+
+        for (int socket:socketsToAdd)
+            socketSet.insert(socket);
+        socketsToAdd.clear();
+
+        for (int socket:socketsToRemove)
+            socketSet.erase(socket);
+        socketsToRemove.clear();
+
     }
+    cleanup(socketSet, listeningSocket);
 
 }
+

@@ -1,7 +1,14 @@
 #include "socket.h"
+#include <vector>
+
+
+const int NUM_CLIENTS = 500;
 
 void startClient() {
-    for (int i = 0; i < 506; i++) {
+
+    std::vector<int> connectedSockets;
+
+    for (int i = 0; i < NUM_CLIENTS; i++) {
 
         int socket = createSocket();
         sockaddr_in server;
@@ -12,7 +19,13 @@ void startClient() {
             cerr << "Connection error\n";
             return;
         }
+        connectedSockets.push_back(socket);
 
     }
+
+    for (int socket:connectedSockets) {
+        sendToSocket(socket, "hello");
+    }
 }
+
 
