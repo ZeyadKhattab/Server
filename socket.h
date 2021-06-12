@@ -9,7 +9,7 @@ using std::cout;
 using std::cerr;
 using std::string;
 
-const int PORT = 4451;
+extern const int PORT;
 
 int createSocket();
 
@@ -18,3 +18,6 @@ std::pair<int, fd_set> startServer();
 void startClient();
 
 void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSockets);
+
+void sendToSocket(int socket, string message);
+
