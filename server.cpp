@@ -120,7 +120,7 @@ void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSo
     timeval timeout;
 
     bool canHandleMoreConnections = true;
-    while (canHandleMoreConnections) {
+    while (1) {
         fd_set copy = currentSockets;
         timeout.tv_sec = 20;
         timeout.tv_usec = 0;
@@ -135,7 +135,7 @@ void acceptConnectionsAndRespondToClients(int listeningSocket, fd_set &currentSo
         }
         for (int i:socketSet)
             if (FD_ISSET(i, &copy)) {
-                if (i == listeningSocket) {
+                if (canHandleMoreConnections && i == listeningSocket) {
                     int clientSocket = acceptConnection(listeningSocket);
                     if (clientSocket == -1) {
                         cerr << "Could not connect";
